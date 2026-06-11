@@ -183,9 +183,11 @@ def process_single_case(db: Session, case_id: int, task_type: BatchTaskType) -> 
             case_no="UNKNOWN",
             success=False,
             message="案件不存在",
-            stage="init"
+            stage="init",
+            error_type="case_not_found"
         )
 
+    current_stage = "init"
     try:
         stages_needed = []
         if task_type == BatchTaskType.OCR:
@@ -200,6 +202,7 @@ def process_single_case(db: Session, case_id: int, task_type: BatchTaskType) -> 
             stages_needed = ["ocr", "extraction", "rule_check", "risk_analysis"]
 
         for stage in stages_needed:
+            current_stage = stage
             if stage == "ocr":
                 if case.status not in [ClaimStatus.SUBMITTED, ClaimStatus.OCR_PROCESSING]:
                     continue
@@ -238,18 +241,23 @@ def process_single_case(db: Session, case_id: int, task_type: BatchTaskType) -> 
             case_id=case.id,
             case_no=case.case_no,
             success=True,
-            message=f"处理完成，当前状态: {case.status.value}",
-            stage="completed"
+            message=f"处理完成，当前状态: {case.status.value if case.status else 'unknown'}",
+            stage="completed",
+            final_status=case.status.value if case.status else "unknown"
         )
 
     except Exception as e:
         db.rollback()
+        db.refresh(case)
         return BatchCaseResult(
             case_id=case.id,
             case_no=case.case_no,
             success=False,
             message=f"处理失败: {str(e)}",
-            stage=stage if 'stage' in locals() else "unknown"
+            stage=current_stage,
+            error_type=type(e).__name__,
+            error_detail=str(e),
+            final_status=case.status.value if case.status else "unknown"
         )
 
 
@@ -261,7 +269,8 @@ def run_ocr_for_case(db: Session, case: ClaimCase):
     db.query(OCRResult).filter(OCRResult.case_id == case.id).delete()
 
     for doc in documents:
-        ocr_result = MockOCRService.recognize(doc.id, doc.file_name, doc.file_path)
+        doc_type = doc.document_type.value if doc.document_type else "unknown"
+        ocr_result = MockOCRService.recognize(doc_type, doc.file_path, doc.file_name)
         result = OCRResult(
             case_id=case.id,
             document_id=doc.id,

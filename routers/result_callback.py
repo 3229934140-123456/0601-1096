@@ -270,6 +270,14 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
 
     rule_passed = sum(1 for r in rule_checks if r.passed)
     rule_total = len(rule_checks)
+    rule_failed_count = rule_total - rule_passed
+
+    confirmed_count = sum(1 for r in rule_checks if r.manual_status and r.manual_status.value == "confirmed")
+    false_positive_count = sum(1 for r in rule_checks if r.manual_status and r.manual_status.value == "false_positive")
+    need_supplement_count = sum(1 for r in rule_checks if r.manual_status and r.manual_status.value == "need_supplement")
+    unconfirmed_count = sum(1 for r in rule_checks if not r.manual_status or r.manual_status.value == "unconfirmed")
+
+    effective_failed_count = rule_failed_count - false_positive_count
 
     critical_alerts = [a for a in risk_alerts if a.risk_level and a.risk_level.value == "critical"]
     high_alerts = [a for a in risk_alerts if a.risk_level and a.risk_level.value == "high"]
@@ -341,10 +349,13 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
             "summary": {
                 "total": rule_total,
                 "passed": rule_passed,
-                "failed": rule_total - rule_passed,
+                "failed": rule_failed_count,
+                "effective_failed": effective_failed_count,
                 "pass_rate": round(rule_passed / rule_total * 100, 2) if rule_total > 0 else 0,
-                "confirmed_count": sum(1 for r in rule_checks if r.manual_status and r.manual_status.value != "unconfirmed"),
-                "unconfirmed_count": sum(1 for r in rule_checks if not r.manual_status or r.manual_status.value == "unconfirmed")
+                "confirmed_count": confirmed_count,
+                "false_positive_count": false_positive_count,
+                "need_supplement_count": need_supplement_count,
+                "unconfirmed_count": unconfirmed_count
             },
             "details": [
                 {
@@ -428,7 +439,8 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
                 for si in supplement_items
             ]
         },
-        "conclusion": generate_conclusion(case, rule_passed, rule_total, risk_alerts)
+        "conclusion": generate_conclusion(case, rule_passed, effective_failed_count, rule_total,
+                                          risk_alerts, false_positive_count, need_supplement_count, confirmed_count)
     }
 
     return summary
@@ -457,10 +469,20 @@ def get_status_description(status: ClaimStatus) -> str:
     return descriptions.get(status, status.value)
 
 
-def generate_conclusion(case: ClaimCase, rule_passed: int, rule_total: int, risk_alerts) -> Dict[str, Any]:
+def generate_conclusion(case: ClaimCase, rule_passed: int, effective_failed: int, rule_total: int,
+                        risk_alerts, false_positive_count: int, need_supplement_count: int,
+                        confirmed_count: int) -> Dict[str, Any]:
     has_critical = any(a.risk_level and a.risk_level.value == "critical" for a in risk_alerts)
     has_high = any(a.risk_level and a.risk_level.value == "high" for a in risk_alerts)
     rule_pass_rate = rule_passed / rule_total * 100 if rule_total > 0 else 100
+
+    manual_processing = []
+    if false_positive_count > 0:
+        manual_processing.append(f"已人工确认{false_positive_count}项误报规则")
+    if need_supplement_count > 0:
+        manual_processing.append(f"{need_supplement_count}项规则已标记需补件")
+    if confirmed_count > 0:
+        manual_processing.append(f"{confirmed_count}项规则已人工确认")
 
     if case.review_result == ReviewResult.APPROVED:
         recommendation = "建议予以赔付"
@@ -475,12 +497,15 @@ def generate_conclusion(case: ClaimCase, rule_passed: int, rule_total: int, risk
         if has_critical:
             recommendation = "建议人工重点复核"
             conclusion_text = "检测到严重风险项，建议由资深理赔人员进行人工复核。"
-        elif has_high or rule_pass_rate < 80:
+        elif has_high or effective_failed > 0 or rule_pass_rate < 80:
             recommendation = "建议人工复核"
-            conclusion_text = "存在较高风险或规则通过率较低，建议进行人工复核。"
+            conclusion_text = "存在较高风险或规则校验未通过，建议进行人工复核。"
         else:
             recommendation = "建议自动通过"
             conclusion_text = "AI初审未发现明显风险，规则校验通过率较高，建议自动通过。"
+
+    if manual_processing:
+        conclusion_text += "（" + "，".join(manual_processing) + "）"
 
     if has_critical or has_high:
         high_risk_count = sum(1 for a in risk_alerts if a.risk_level and a.risk_level.value in ["critical", "high"])
@@ -492,10 +517,14 @@ def generate_conclusion(case: ClaimCase, rule_passed: int, rule_total: int, risk
         "conclusion": conclusion_text,
         "risk_assessment": risk_assessment,
         "rule_pass_rate": round(rule_pass_rate, 2),
+        "effective_failed_count": effective_failed,
+        "false_positive_count": false_positive_count,
+        "need_supplement_count": need_supplement_count,
         "recommendation": recommendation,
         "approved_amount": case.final_approved_amount,
         "claim_amount": case.claim_amount,
-        "amount_difference": (case.claim_amount - case.final_approved_amount) if case.final_approved_amount else None
+        "amount_difference": (case.claim_amount - case.final_approved_amount) if case.final_approved_amount else None,
+        "manual_processed": len(manual_processing) > 0
     }
 
 

@@ -431,19 +431,23 @@ class MockRiskAnalyzer:
                 "recommendation": "建议由资深理赔人员审核，核实费用真实性。"
             })
 
-        failed_rules = [r for r in rule_results if not r.get("passed") and r.get("severity") == "error"]
+        failed_rules = [r for r in rule_results if r.get("effectively_failed", not r.get("passed")) and r.get("severity") == "error"]
         if len(failed_rules) >= 2:
             contribution = len(failed_rules) * 5
             total_risk_score += contribution
+            false_positive_count = sum(1 for r in rule_results if r.get("manual_status") == "false_positive" and r.get("severity") == "error")
+            desc = f"共有{len(failed_rules)}项严重规则校验未通过"
+            if false_positive_count > 0:
+                desc += f"（已排除{false_positive_count}项人工确认误报）"
             risk_alerts.append({
                 "alert_code": "RISK_002",
                 "alert_type": "rule_violation",
                 "title": "多项规则校验不通过",
-                "description": f"共有{len(failed_rules)}项严重规则校验未通过",
+                "description": desc,
                 "risk_level": "high",
                 "risk_score_contribution": contribution,
-                "evidence": {"failed_rules": [r["rule_name"] for r in failed_rules]},
-                "explanation": "多项关键规则校验失败，可能存在材料不完整或信息不一致问题。",
+                "evidence": {"failed_rules": [r["rule_name"] for r in failed_rules], "false_positive_count": false_positive_count},
+                "explanation": "多项关键规则校验失败，可能存在材料不完整或信息不一致问题。已排除人工确认的误报规则。",
                 "recommendation": "请检查补充相关材料，或说明特殊情况。"
             })
 
@@ -498,21 +502,24 @@ class MockRiskAnalyzer:
                 "recommendation": "请仔细核对所有单据，移除重复提交的材料，并说明原因。"
             })
 
-        name_mismatches = [r for r in rule_results if r.get("rule_code") == "RULE_001" and not r.get("passed")]
+        name_mismatches = [r for r in rule_results if r.get("rule_code") == "RULE_001" and r.get("effectively_failed", not r.get("passed"))]
         if name_mismatches:
             contribution = 15
-            total_risk_score += contribution
-            risk_alerts.append({
-                "alert_code": "RISK_006",
-                "alert_type": "identity_mismatch",
-                "title": "身份信息不一致",
-                "description": "索赔人与被保险人信息不一致",
-                "risk_level": "medium",
-                "risk_score_contribution": contribution,
-                "evidence": {"details": name_mismatches[0].get("actual_value", "")},
-                "explanation": "索赔人信息与被保险人信息存在差异，需确认是否为合法受益人。",
-                "recommendation": "请提供相关证明文件，确认索赔资格。"
-            })
+            if name_mismatches[0].get("manual_status") == "false_positive":
+                contribution = 0
+            else:
+                total_risk_score += contribution
+                risk_alerts.append({
+                    "alert_code": "RISK_006",
+                    "alert_type": "identity_mismatch",
+                    "title": "身份信息不一致",
+                    "description": "索赔人与被保险人信息不一致",
+                    "risk_level": "medium",
+                    "risk_score_contribution": contribution,
+                    "evidence": {"details": name_mismatches[0].get("actual_value", "")},
+                    "explanation": "索赔人信息与被保险人信息存在差异，需确认是否为合法受益人。",
+                    "recommendation": "请提供相关证明文件，确认索赔资格。"
+                })
 
         if total_risk_score >= 80:
             risk_level = "critical"

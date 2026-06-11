@@ -374,6 +374,12 @@ class BatchCaseResult(BaseModel):
     success: bool
     message: str
     stage: Optional[str] = None
+    error_type: Optional[str] = None
+    error_detail: Optional[str] = None
+    final_status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class BatchTaskResponse(BaseModel):
