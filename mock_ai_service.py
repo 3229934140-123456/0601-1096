@@ -295,6 +295,112 @@ class MockRuleEngine:
                 "severity": "warning" if not all_dates_valid else "info"
             })
 
+        ocr_names = [r.get("recognized_name") for r in ocr_results if r.get("recognized_name")]
+        claimant_name = case_data.get("claimant_name", "")
+        if ocr_names and claimant_name:
+            name_match_count = sum(1 for n in ocr_names if n == claimant_name)
+            name_match = name_match_count == len(ocr_names)
+            ocr_names_str = ", ".join(set(ocr_names))
+            rule_results.append({
+                "rule_code": "RULE_008",
+                "rule_name": "OCR识别姓名与提交信息一致性检查",
+                "passed": name_match,
+                "actual_value": f"提交姓名: {claimant_name}, OCR识别姓名: {ocr_names_str}",
+                "expected_value": "OCR识别姓名与提交信息一致",
+                "description": "比对OCR识别出的姓名与案件提交的索赔人姓名是否一致",
+                "severity": "error" if not name_match else "info",
+                "suggestion": "建议人工复核或重新上传清晰的身份证件" if not name_match else None
+            })
+        else:
+            rule_results.append({
+                "rule_code": "RULE_008",
+                "rule_name": "OCR识别姓名与提交信息一致性检查",
+                "passed": True,
+                "actual_value": "无OCR识别姓名或未提交索赔人姓名",
+                "expected_value": "OCR识别姓名与提交信息一致",
+                "description": "比对OCR识别出的姓名与案件提交的索赔人姓名是否一致",
+                "severity": "info"
+            })
+
+        ocr_id_cards = [r.get("recognized_id_card") for r in ocr_results if r.get("recognized_id_card")]
+        claimant_id_card = case_data.get("claimant_id_card", "")
+        if ocr_id_cards and claimant_id_card:
+            id_match_count = sum(1 for idc in ocr_id_cards if idc == claimant_id_card)
+            id_match = id_match_count == len(ocr_id_cards)
+            ocr_id_str = ", ".join(set(ocr_id_cards))
+            rule_results.append({
+                "rule_code": "RULE_009",
+                "rule_name": "OCR识别证件号与提交信息一致性检查",
+                "passed": id_match,
+                "actual_value": f"提交证件号: {claimant_id_card}, OCR识别证件号: {ocr_id_str}",
+                "expected_value": "OCR识别证件号与提交信息一致",
+                "description": "比对OCR识别出的身份证号与案件提交的索赔人身份证号是否一致",
+                "severity": "error" if not id_match else "info",
+                "suggestion": "建议人工复核或重新上传清晰的身份证件" if not id_match else None
+            })
+        else:
+            rule_results.append({
+                "rule_code": "RULE_009",
+                "rule_name": "OCR识别证件号与提交信息一致性检查",
+                "passed": True,
+                "actual_value": "无OCR识别证件号或未提交索赔人证件号",
+                "expected_value": "OCR识别证件号与提交信息一致",
+                "description": "比对OCR识别出的身份证号与案件提交的索赔人身份证号是否一致",
+                "severity": "info"
+            })
+
+        extracted_names = [d.get("value") for d in extracted_data if d.get("key") == "person_name" and d.get("value")]
+        if extracted_names and claimant_name:
+            ext_name_match_count = sum(1 for n in extracted_names if n == claimant_name)
+            ext_name_match = ext_name_match_count == len(extracted_names)
+            ext_names_str = ", ".join(set(str(n) for n in extracted_names))
+            rule_results.append({
+                "rule_code": "RULE_010",
+                "rule_name": "文本抽取姓名与提交信息一致性检查",
+                "passed": ext_name_match,
+                "actual_value": f"提交姓名: {claimant_name}, 抽取姓名: {ext_names_str}",
+                "expected_value": "文本抽取姓名与提交信息一致",
+                "description": "比对文本抽取的姓名与案件提交的索赔人姓名是否一致",
+                "severity": "error" if not ext_name_match else "info",
+                "suggestion": "建议人工复核或补充上传身份证明材料" if not ext_name_match else None
+            })
+        else:
+            rule_results.append({
+                "rule_code": "RULE_010",
+                "rule_name": "文本抽取姓名与提交信息一致性检查",
+                "passed": True,
+                "actual_value": "无抽取姓名或未提交索赔人姓名",
+                "expected_value": "文本抽取姓名与提交信息一致",
+                "description": "比对文本抽取的姓名与案件提交的索赔人姓名是否一致",
+                "severity": "info"
+            })
+
+        extracted_id_cards = [d.get("value") for d in extracted_data if d.get("key") == "id_card" and d.get("value")]
+        if extracted_id_cards and claimant_id_card:
+            ext_id_match_count = sum(1 for idc in extracted_id_cards if idc == claimant_id_card)
+            ext_id_match = ext_id_match_count == len(extracted_id_cards)
+            ext_id_str = ", ".join(set(str(idc) for idc in extracted_id_cards))
+            rule_results.append({
+                "rule_code": "RULE_011",
+                "rule_name": "文本抽取证件号与提交信息一致性检查",
+                "passed": ext_id_match,
+                "actual_value": f"提交证件号: {claimant_id_card}, 抽取证件号: {ext_id_str}",
+                "expected_value": "文本抽取证件号与提交信息一致",
+                "description": "比对文本抽取的身份证号与案件提交的索赔人身份证号是否一致",
+                "severity": "error" if not ext_id_match else "info",
+                "suggestion": "建议人工复核或补充上传身份证明材料" if not ext_id_match else None
+            })
+        else:
+            rule_results.append({
+                "rule_code": "RULE_011",
+                "rule_name": "文本抽取证件号与提交信息一致性检查",
+                "passed": True,
+                "actual_value": "无抽取证件号或未提交索赔人证件号",
+                "expected_value": "文本抽取证件号与提交信息一致",
+                "description": "比对文本抽取的身份证号与案件提交的索赔人身份证号是否一致",
+                "severity": "info"
+            })
+
         return rule_results
 
 

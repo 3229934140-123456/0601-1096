@@ -52,6 +52,7 @@ class CaseResponse(CaseBase):
 class CaseDetailResponse(CaseResponse):
     documents: List["DocumentResponse"] = []
     ocr_results: List["OCRResultResponse"] = []
+    extracted_data: List["ExtractedDataResponse"] = []
     rule_checks: List["RuleCheckResponse"] = []
     risk_alerts: List["RiskAlertResponse"] = []
     review_records: List["ReviewRecordResponse"] = []
@@ -120,6 +121,7 @@ class RuleCheckBase(BaseModel):
     expected_value: Optional[str] = None
     description: Optional[str] = None
     severity: str = "warning"
+    suggestion: Optional[str] = None
 
 
 class RuleCheckResponse(RuleCheckBase):
@@ -246,10 +248,10 @@ class RuleCheckRequest(BaseModel):
     case_id: int
 
 
-class RuleCheckResponse(BaseModel):
+class RuleCheckSummaryResponse(BaseModel):
     success: bool
     message: str
-    rule_checks: List[RuleCheckResponse] = []
+    rule_checks: List["RuleCheckResponse"] = []
     all_passed: bool = False
 
 

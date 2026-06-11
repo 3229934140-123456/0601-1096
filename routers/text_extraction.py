@@ -41,6 +41,7 @@ async def extract_data(request: ExtractionRequest, db: Session = Depends(get_db)
             )
 
         all_extracted = []
+        db.query(ExtractedData).filter(ExtractedData.case_id == request.case_id).delete()
         for ocr_result in ocr_results:
             document = ocr_result.document
             extracted_items = MockNLPService.extract(

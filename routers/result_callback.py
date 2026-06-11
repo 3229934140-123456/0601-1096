@@ -226,7 +226,8 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
                     "severity": rc.severity,
                     "actual_value": rc.actual_value,
                     "expected_value": rc.expected_value,
-                    "description": rc.description
+                    "description": rc.description,
+                    "suggestion": rc.suggestion
                 }
                 for rc in rule_checks
             ]

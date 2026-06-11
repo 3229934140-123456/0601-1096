@@ -7,14 +7,14 @@ import hashlib
 
 from database import get_db
 from models import ClaimCase, OCRResult, RuleCheckResult, ClaimStatus, Document, SupplementItem
-from schemas import RuleCheckRequest, RuleCheckResponse, RuleCheckResponse as RuleCheckResp, SupplementItemResponse
+from schemas import RuleCheckRequest, RuleCheckResponse, RuleCheckSummaryResponse, SupplementItemResponse
 from mock_ai_service import MockRuleEngine
 from config import settings
 
 router = APIRouter(prefix="/api/rules", tags=["规则核对"])
 
 
-@router.post("/check", response_model=RuleCheckResponse)
+@router.post("/check", response_model=RuleCheckSummaryResponse)
 async def check_rules(request: RuleCheckRequest, db: Session = Depends(get_db)):
     case = db.query(ClaimCase).filter(ClaimCase.id == request.case_id).first()
     if not case:
@@ -78,7 +78,8 @@ async def check_rules(request: RuleCheckRequest, db: Session = Depends(get_db)):
                 actual_value=rule["actual_value"],
                 expected_value=rule["expected_value"],
                 description=rule["description"],
-                severity=rule["severity"]
+                severity=rule["severity"],
+                suggestion=rule.get("suggestion")
             )
             db.add(check_result)
             saved_results.append(check_result)
@@ -95,7 +96,7 @@ async def check_rules(request: RuleCheckRequest, db: Session = Depends(get_db)):
         for result in saved_results:
             db.refresh(result)
 
-        return RuleCheckResponse(
+        return RuleCheckSummaryResponse(
             success=True,
             message=f"规则核对完成，通过{sum(1 for r in rule_results if r['passed'])}/{len(rule_results)}项",
             rule_checks=saved_results,
@@ -168,6 +169,46 @@ async def generate_supplement_items(case_id: int, rule_results, ocr_data_list, d
                 priority=2
             )
             db.add(item)
+        elif rule["rule_code"] == "RULE_008":
+            item = SupplementItem(
+                case_id=case_id,
+                item_code="SUP_006",
+                item_name="身份信息核对",
+                description="OCR识别姓名与提交信息不一致，请核对并补充上传清晰的身份证件",
+                reason=rule.get("actual_value", "OCR识别姓名与提交信息不一致"),
+                priority=1
+            )
+            db.add(item)
+        elif rule["rule_code"] == "RULE_009":
+            item = SupplementItem(
+                case_id=case_id,
+                item_code="SUP_007",
+                item_name="证件信息核对",
+                description="OCR识别证件号与提交信息不一致，请核对并补充上传清晰的身份证件",
+                reason=rule.get("actual_value", "OCR识别证件号与提交信息不一致"),
+                priority=1
+            )
+            db.add(item)
+        elif rule["rule_code"] == "RULE_010":
+            item = SupplementItem(
+                case_id=case_id,
+                item_code="SUP_008",
+                item_name="身份信息复核",
+                description="文本抽取姓名与提交信息不一致，建议人工复核",
+                reason=rule.get("actual_value", "文本抽取姓名与提交信息不一致"),
+                priority=2
+            )
+            db.add(item)
+        elif rule["rule_code"] == "RULE_011":
+            item = SupplementItem(
+                case_id=case_id,
+                item_code="SUP_009",
+                item_name="证件信息复核",
+                description="文本抽取证件号与提交信息不一致，建议人工复核",
+                reason=rule.get("actual_value", "文本抽取证件号与提交信息不一致"),
+                priority=2
+            )
+            db.add(item)
 
     failed_warning_rules = [r for r in rule_results if not r["passed"] and r["severity"] == "warning"]
 
@@ -194,7 +235,7 @@ async def generate_supplement_items(case_id: int, rule_results, ocr_data_list, d
             db.add(item)
 
 
-@router.get("/case/{case_id}/results", response_model=List[RuleCheckResp])
+@router.get("/case/{case_id}/results", response_model=List[RuleCheckResponse])
 def get_rule_check_results(case_id: int, db: Session = Depends(get_db)):
     case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
     if not case:

@@ -24,7 +24,11 @@ from routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    print(f"数据库初始化完成")
+    print("数据库初始化完成")
+    
+    from init_data import init_database
+    init_database()
+    
     print(f"上传目录: {settings.UPLOAD_DIR.absolute()}")
     print(f"导出目录: {settings.EXPORT_DIR.absolute()}")
     yield

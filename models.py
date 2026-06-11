@@ -161,6 +161,7 @@ class RuleCheckResult(Base):
     expected_value = Column(Text)
     description = Column(Text)
     severity = Column(String(32), default="warning")
+    suggestion = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     extra_data = Column(JSON, default={})
 

@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import ClaimCase, ClaimStatus, SupplementItem, CallLog
+from models import ClaimCase, ClaimStatus, SupplementItem, CallLog, RiskLevel
 from schemas import ProgressResponse, SupplementItemResponse, CallLogResponse
 
 router = APIRouter(prefix="/api/progress", tags=["进度查询"])
@@ -50,7 +50,7 @@ STATUS_ORDER = [
 ]
 
 
-@router.get("/{case_id}", response_model=ProgressResponse)
+@router.get("/case/{case_id}", response_model=ProgressResponse)
 def get_case_progress(case_id: int, db: Session = Depends(get_db)):
     case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
     if not case:
@@ -105,7 +105,7 @@ def get_case_progress(case_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/{case_id}/supplements", response_model=list[SupplementItemResponse])
+@router.get("/case/{case_id}/supplements", response_model=list[SupplementItemResponse])
 def get_supplement_list(
     case_id: int,
     is_completed: Optional[bool] = None,
@@ -123,7 +123,7 @@ def get_supplement_list(
     return query.order_by(SupplementItem.priority, SupplementItem.created_at).all()
 
 
-@router.get("/{case_id}/logs", response_model=list[CallLogResponse])
+@router.get("/case/{case_id}/logs", response_model=list[CallLogResponse])
 def get_case_call_logs(
     case_id: int,
     skip: int = 0,
@@ -139,6 +139,48 @@ def get_case_call_logs(
     ).order_by(CallLog.created_at.desc()).offset(skip).limit(limit).all()
 
     return logs
+
+
+@router.get("/list", response_model=list)
+def list_cases(
+    status: Optional[ClaimStatus] = None,
+    risk_level: Optional[RiskLevel] = None,
+    is_high_risk: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    query = db.query(ClaimCase)
+
+    if status is not None:
+        query = query.filter(ClaimCase.status == status)
+    if risk_level is not None:
+        query = query.filter(ClaimCase.risk_level == risk_level)
+    if is_high_risk is not None:
+        query = query.filter(ClaimCase.is_high_risk == is_high_risk)
+
+    cases = query.order_by(ClaimCase.updated_at.desc()).offset(skip).limit(limit).all()
+
+    result = []
+    for case in cases:
+        progress = get_case_progress_obj(case)
+        result.append({
+            "case_id": case.id,
+            "case_no": case.case_no,
+            "claimant_name": case.claimant_name,
+            "claim_amount": case.claim_amount,
+            "risk_level": case.risk_level.value,
+            "risk_score": case.risk_score,
+            "is_high_risk": case.is_high_risk,
+            "status": case.status.value,
+            "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value),
+            "progress_percent": progress["progress_percent"],
+            "current_step": progress["current_step"],
+            "total_steps": progress["total_steps"],
+            "updated_at": case.updated_at
+        })
+
+    return result
 
 
 @router.get("/status/{status}", response_model=list)
@@ -162,8 +204,12 @@ def get_cases_by_status(
             "claim_amount": case.claim_amount,
             "risk_level": case.risk_level.value,
             "risk_score": case.risk_score,
-            "progress": progress["progress_percent"],
+            "is_high_risk": case.is_high_risk,
+            "status": case.status.value,
             "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value),
+            "progress_percent": progress["progress_percent"],
+            "current_step": progress["current_step"],
+            "total_steps": progress["total_steps"],
             "updated_at": case.updated_at
         })
 
@@ -183,7 +229,7 @@ def get_case_progress_obj(case: ClaimCase) -> dict:
     }
 
 
-@router.get("/{case_id}/supplement-list")
+@router.get("/case/{case_id}/supplement-list")
 def generate_supplement_list(case_id: int, db: Session = Depends(get_db)):
     case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
     if not case:
