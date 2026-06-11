@@ -1,0 +1,412 @@
+{
+  "basic_info": {
+    "case_no": "CL20240003",
+    "policy_no": "POL111222333",
+    "claimant_name": "王五",
+    "claimant_id_card": "440101199212129012",
+    "insured_name": "王五",
+    "insured_id_card": "440101199212129012",
+    "claim_amount": 5000.0,
+    "accident_date": "2026-06-09 04:03:50.974346",
+    "claim_date": "2026-06-11 20:03:50.988237",
+    "created_at": "2026-06-11 20:03:50.988237",
+    "updated_at": "2026-06-11 20:12:55.087573"
+  },
+  "processing_overview": {
+    "current_status": "risk_analyzed",
+    "current_status_desc": "风险分析完成",
+    "risk_level": "low",
+    "risk_score": 0.0,
+    "is_high_risk": false,
+    "total_documents": 3,
+    "total_ocr_results": 3,
+    "total_invoice_amount": 6703.66
+  },
+  "documents": [
+    {
+      "id": 7,
+      "type": "id_card",
+      "file_name": "CL20240003_id_card_1.jpg",
+      "file_size": 1024,
+      "upload_time": "2026-06-11 20:03:50.992198",
+      "is_duplicate": false,
+      "ocr_completed": true
+    },
+    {
+      "id": 8,
+      "type": "invoice",
+      "file_name": "CL20240003_invoice_2.jpg",
+      "file_size": 2048,
+      "upload_time": "2026-06-11 20:03:50.992198",
+      "is_duplicate": false,
+      "ocr_completed": true
+    },
+    {
+      "id": 9,
+      "type": "policy",
+      "file_name": "CL20240003_policy_3.jpg",
+      "file_size": 3072,
+      "upload_time": "2026-06-11 20:03:50.992198",
+      "is_duplicate": false,
+      "ocr_completed": true
+    }
+  ],
+  "ocr_recognition": [
+    {
+      "id": 1,
+      "document_id": 7,
+      "document_type": "id_card",
+      "confidence": 0.8526,
+      "recognized_amount": null,
+      "recognized_date": "1996-08-21 00:00:00",
+      "recognized_name": "李四",
+      "hospital_name": null,
+      "diagnosis": null,
+      "processing_time_ms": 827
+    },
+    {
+      "id": 2,
+      "document_id": 8,
+      "document_type": "invoice",
+      "confidence": 0.9377,
+      "recognized_amount": 6703.66,
+      "recognized_date": "2026-05-17 04:11:05.285108",
+      "recognized_name": "李四",
+      "hospital_name": "成都华西医院",
+      "diagnosis": "肺炎",
+      "processing_time_ms": 1344
+    },
+    {
+      "id": 3,
+      "document_id": 9,
+      "document_type": "policy",
+      "confidence": 0.9048,
+      "recognized_amount": 30550.27,
+      "recognized_date": "2025-07-20 04:11:05.394488",
+      "recognized_name": "王五",
+      "hospital_name": null,
+      "diagnosis": null,
+      "processing_time_ms": 886
+    }
+  ],
+  "extracted_data": [
+    {
+      "id": 1,
+      "key": "person_name",
+      "value": "李四",
+      "value_type": "string",
+      "confidence": 0.8776,
+      "source_type": "id_card"
+    },
+    {
+      "id": 2,
+      "key": "id_card",
+      "value": "110101199608219277",
+      "value_type": "string",
+      "confidence": 0.9224,
+      "source_type": "id_card"
+    },
+    {
+      "id": 3,
+      "key": "claim_amount",
+      "value": "6703.66",
+      "value_type": "float",
+      "confidence": 0.9002,
+      "source_type": "invoice"
+    },
+    {
+      "id": 4,
+      "key": "person_name",
+      "value": "李四",
+      "value_type": "string",
+      "confidence": 0.9036,
+      "source_type": "invoice"
+    },
+    {
+      "id": 5,
+      "key": "document_date",
+      "value": "2026-05-17",
+      "value_type": "date",
+      "confidence": 0.9159,
+      "source_type": "invoice"
+    },
+    {
+      "id": 6,
+      "key": "document_no",
+      "value": "INV878718",
+      "value_type": "string",
+      "confidence": 0.9469,
+      "source_type": "invoice"
+    },
+    {
+      "id": 7,
+      "key": "diagnosis",
+      "value": "肺炎",
+      "value_type": "string",
+      "confidence": 0.8524,
+      "source_type": "invoice"
+    },
+    {
+      "id": 8,
+      "key": "hospital_name",
+      "value": "成都华西医院\n            诊断: 肺炎\n            金额: 6703.66元\n            收费项目: 检查费 药品费 治疗费",
+      "value_type": "string",
+      "confidence": 0.8924,
+      "source_type": "invoice"
+    },
+    {
+      "id": 9,
+      "key": "claim_amount",
+      "value": "30550.27",
+      "value_type": "float",
+      "confidence": 0.9145,
+      "source_type": "policy"
+    },
+    {
+      "id": 10,
+      "key": "person_name",
+      "value": "王五",
+      "value_type": "string",
+      "confidence": 0.8891,
+      "source_type": "policy"
+    },
+    {
+      "id": 11,
+      "key": "id_card",
+      "value": "110101200002098460",
+      "value_type": "string",
+      "confidence": 0.9778,
+      "source_type": "policy"
+    },
+    {
+      "id": 12,
+      "key": "document_no",
+      "value": "POL470603",
+      "value_type": "string",
+      "confidence": 0.92,
+      "source_type": "policy"
+    },
+    {
+      "id": 13,
+      "key": "person_name",
+      "value": "李四",
+      "value_type": "string",
+      "confidence": 0.864,
+      "source_type": "id_card"
+    },
+    {
+      "id": 14,
+      "key": "id_card",
+      "value": "110101199608219277",
+      "value_type": "string",
+      "confidence": 0.9324,
+      "source_type": "id_card"
+    },
+    {
+      "id": 15,
+      "key": "claim_amount",
+      "value": "6703.66",
+      "value_type": "float",
+      "confidence": 0.913,
+      "source_type": "invoice"
+    },
+    {
+      "id": 16,
+      "key": "person_name",
+      "value": "李四",
+      "value_type": "string",
+      "confidence": 0.8668,
+      "source_type": "invoice"
+    },
+    {
+      "id": 17,
+      "key": "document_date",
+      "value": "2026-05-17",
+      "value_type": "date",
+      "confidence": 0.961,
+      "source_type": "invoice"
+    },
+    {
+      "id": 18,
+      "key": "document_no",
+      "value": "INV878718",
+      "value_type": "string",
+      "confidence": 0.9327,
+      "source_type": "invoice"
+    },
+    {
+      "id": 19,
+      "key": "diagnosis",
+      "value": "肺炎",
+      "value_type": "string",
+      "confidence": 0.8944,
+      "source_type": "invoice"
+    },
+    {
+      "id": 20,
+      "key": "hospital_name",
+      "value": "成都华西医院\n            诊断: 肺炎\n            金额: 6703.66元\n            收费项目: 检查费 药品费 治疗费",
+      "value_type": "string",
+      "confidence": 0.9589,
+      "source_type": "invoice"
+    },
+    {
+      "id": 21,
+      "key": "claim_amount",
+      "value": "30550.27",
+      "value_type": "float",
+      "confidence": 0.9212,
+      "source_type": "policy"
+    },
+    {
+      "id": 22,
+      "key": "person_name",
+      "value": "王五",
+      "value_type": "string",
+      "confidence": 0.9095,
+      "source_type": "policy"
+    },
+    {
+      "id": 23,
+      "key": "id_card",
+      "value": "110101200002098460",
+      "value_type": "string",
+      "confidence": 0.9873,
+      "source_type": "policy"
+    },
+    {
+      "id": 24,
+      "key": "document_no",
+      "value": "POL470603",
+      "value_type": "string",
+      "confidence": 0.9385,
+      "source_type": "policy"
+    }
+  ],
+  "rule_checks": {
+    "summary": {
+      "total": 7,
+      "passed": 5,
+      "failed": 2,
+      "pass_rate": 71.43
+    },
+    "details": [
+      {
+        "id": 1,
+        "rule_code": "RULE_001",
+        "rule_name": "姓名一致性检查",
+        "passed": true,
+        "severity": "info",
+        "actual_value": "索赔人: 王五, 被保险人: 王五",
+        "expected_value": "姓名一致",
+        "description": "验证索赔人与被保险人姓名是否一致"
+      },
+      {
+        "id": 2,
+        "rule_code": "RULE_002",
+        "rule_name": "身份证号格式校验",
+        "passed": true,
+        "severity": "info",
+        "actual_value": "440101199212129012",
+        "expected_value": "15或18位有效身份证号",
+        "description": "验证身份证号格式是否正确"
+      },
+      {
+        "id": 3,
+        "rule_code": "RULE_003",
+        "rule_name": "索赔金额与票据金额比对",
+        "passed": false,
+        "severity": "warning",
+        "actual_value": "索赔金额: 5000.0, 票据总额: 37253.93",
+        "expected_value": "差额不超过10%",
+        "description": "核对索赔金额与票据总金额是否匹配"
+      },
+      {
+        "id": 4,
+        "rule_code": "RULE_004",
+        "rule_name": "保单号验证",
+        "passed": true,
+        "severity": "info",
+        "actual_value": "提交保单号: POL111222333",
+        "expected_value": "保单号已提供",
+        "description": "验证保单号是否已提供"
+      },
+      {
+        "id": 5,
+        "rule_code": "RULE_005",
+        "rule_name": "必要材料检查-发票",
+        "passed": true,
+        "severity": "info",
+        "actual_value": "已上传发票",
+        "expected_value": "必须提供医疗发票",
+        "description": "检查是否已上传必要的医疗发票"
+      },
+      {
+        "id": 6,
+        "rule_code": "RULE_006",
+        "rule_name": "必要材料检查-身份证明",
+        "passed": true,
+        "severity": "info",
+        "actual_value": "已上传身份证",
+        "expected_value": "必须提供身份证明",
+        "description": "检查是否已上传必要的身份证明"
+      },
+      {
+        "id": 7,
+        "rule_code": "RULE_007",
+        "rule_name": "票据日期逻辑检查",
+        "passed": false,
+        "severity": "warning",
+        "actual_value": "事故日期: 2026-06-09",
+        "expected_value": "所有票据日期晚于事故日期",
+        "description": "检查票据日期是否在事故发生之后"
+      }
+    ]
+  },
+  "risk_analysis": {
+    "summary": {
+      "overall_risk_level": "low",
+      "overall_risk_score": 0.0,
+      "is_high_risk": false,
+      "critical_alerts": 0,
+      "high_alerts": 0,
+      "medium_alerts": 0
+    },
+    "alerts": []
+  },
+  "manual_review": {
+    "reviewer": null,
+    "reviewer_id": null,
+    "review_result": null,
+    "review_opinion": null,
+    "review_date": null,
+    "final_approved_amount": null,
+    "records": []
+  },
+  "supplements": {
+    "total": 1,
+    "completed": 0,
+    "pending": 1,
+    "items": [
+      {
+        "id": 1,
+        "item_code": "SUP_005",
+        "item_name": "费用明细说明",
+        "description": "请提供索赔金额与票据金额差异的说明或补充票据",
+        "reason": "索赔金额与票据总金额差异较大",
+        "priority": 2,
+        "is_completed": false,
+        "completed_at": null
+      }
+    ]
+  },
+  "conclusion": {
+    "conclusion": "存在较高风险或规则通过率较低，建议进行人工复核。",
+    "risk_assessment": "未发现明显风险",
+    "rule_pass_rate": 71.43,
+    "recommendation": "建议人工复核",
+    "approved_amount": null,
+    "claim_amount": 5000.0,
+    "amount_difference": null
+  }
+}
