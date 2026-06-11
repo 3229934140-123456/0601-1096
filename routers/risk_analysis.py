@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Any
 import asyncio
 from datetime import datetime, timedelta
 
 from database import get_db
-from models import ClaimCase, RuleCheckResult, OCRResult, RiskAlert, ClaimStatus, RiskLevel
+from models import ClaimCase, RuleCheckResult, OCRResult, RiskAlert, ClaimStatus, RiskLevel, RuleManualStatus
 from schemas import RiskAnalysisRequest, RiskAnalysisResponse, RiskAlertResponse
 from mock_ai_service import MockRiskAnalyzer
 
@@ -40,13 +40,24 @@ async def analyze_risk(request: RiskAnalysisRequest, db: Session = Depends(get_d
         }
 
         rule_data_list = []
+        effective_failed_count = 0
+        confirmed_false_positive_count = 0
         for rule in rule_results:
+            manual_status = rule.manual_status.value if rule.manual_status else "unconfirmed"
+            is_effectively_failed = (not rule.passed) and manual_status not in ["false_positive"]
+            if is_effectively_failed and rule.severity == "error":
+                effective_failed_count += 1
+            if manual_status == "false_positive":
+                confirmed_false_positive_count += 1
+
             rule_data_list.append({
                 "rule_code": rule.rule_code,
                 "rule_name": rule.rule_name,
                 "passed": rule.passed,
                 "severity": rule.severity,
-                "actual_value": rule.actual_value
+                "actual_value": rule.actual_value,
+                "manual_status": manual_status,
+                "effectively_failed": is_effectively_failed
             })
 
         ocr_data_list = []
@@ -75,7 +86,7 @@ async def analyze_risk(request: RiskAnalysisRequest, db: Session = Depends(get_d
                     "case_no": hc.case_no,
                     "claim_amount": hc.claim_amount,
                     "claim_date": hc.claim_date,
-                    "status": hc.status.value
+                    "status": hc.status.value if hc.status else "unknown"
                 })
 
         risk_result = MockRiskAnalyzer.analyze(case_data, rule_data_list, ocr_data_list, historical_cases)
@@ -104,7 +115,13 @@ async def analyze_risk(request: RiskAnalysisRequest, db: Session = Depends(get_d
         case.is_high_risk = risk_result["is_high_risk"]
         case.status = ClaimStatus.RISK_ANALYZED
 
-        if case.is_high_risk:
+        if confirmed_false_positive_count > 0 and case.risk_score > 0:
+            case.risk_score = max(0, case.risk_score - (confirmed_false_positive_count * 5))
+            if case.risk_score < 30:
+                case.risk_level = RiskLevel.LOW
+                case.is_high_risk = False
+
+        if case.is_high_risk or effective_failed_count > 0:
             case.status = ClaimStatus.PENDING_REVIEW
 
         db.commit()

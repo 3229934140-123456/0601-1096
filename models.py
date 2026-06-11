@@ -51,6 +51,28 @@ class ReviewResult(str, enum.Enum):
     NEED_REINVESTIGATION = "need_reinvestigation"
 
 
+class RuleManualStatus(str, enum.Enum):
+    UNCONFIRMED = "unconfirmed"
+    CONFIRMED = "confirmed"
+    FALSE_POSITIVE = "false_positive"
+    NEED_SUPPLEMENT = "need_supplement"
+
+
+class BatchTaskStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class BatchTaskType(str, enum.Enum):
+    OCR = "ocr"
+    EXTRACTION = "extraction"
+    RULE_CHECK = "rule_check"
+    RISK_ANALYSIS = "risk_analysis"
+    FULL_PIPELINE = "full_pipeline"
+
+
 class ClaimCase(Base):
     __tablename__ = "claim_cases"
 
@@ -162,6 +184,10 @@ class RuleCheckResult(Base):
     description = Column(Text)
     severity = Column(String(32), default="warning")
     suggestion = Column(Text)
+    manual_status = Column(Enum(RuleManualStatus), default=RuleManualStatus.UNCONFIRMED)
+    manual_note = Column(Text)
+    manual_confirmed_by = Column(String(128))
+    manual_confirmed_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     extra_data = Column(JSON, default={})
 
@@ -254,3 +280,41 @@ class CallLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     case = relationship("ClaimCase", back_populates="call_logs")
+
+
+class SummaryVersion(Base):
+    __tablename__ = "summary_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("claim_cases.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    format = Column(String(16), default="json")
+    file_name = Column(String(255))
+    file_path = Column(String(512))
+    generated_by = Column(String(128), default="system")
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    summary_snapshot = Column(JSON, default={})
+    is_latest = Column(Boolean, default=True)
+    extra_data = Column(JSON, default={})
+
+    case = relationship("ClaimCase")
+
+
+class BatchTask(Base):
+    __tablename__ = "batch_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_no = Column(String(64), unique=True, index=True, nullable=False)
+    task_type = Column(Enum(BatchTaskType), nullable=False)
+    status = Column(Enum(BatchTaskStatus), default=BatchTaskStatus.PENDING)
+    triggered_by = Column(String(128), default="system")
+    filter_status = Column(String(64))
+    case_ids = Column(JSON, default=[])
+    total_count = Column(Integer, default=0)
+    success_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    results = Column(JSON, default=[])
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    extra_data = Column(JSON, default={})

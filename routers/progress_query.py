@@ -95,7 +95,7 @@ def get_case_progress(case_id: int, db: Session = Depends(get_db)):
         case_id=case.id,
         case_no=case.case_no,
         status=case.status,
-        status_description=STATUS_DESCRIPTIONS.get(case.status, case.status.value),
+        status_description=STATUS_DESCRIPTIONS.get(case.status, case.status.value if case.status else "unknown"),
         current_step=processing_current,
         total_steps=processing_steps,
         progress_percent=round(progress_percent, 2),
@@ -169,11 +169,11 @@ def list_cases(
             "case_no": case.case_no,
             "claimant_name": case.claimant_name,
             "claim_amount": case.claim_amount,
-            "risk_level": case.risk_level.value,
-            "risk_score": case.risk_score,
-            "is_high_risk": case.is_high_risk,
-            "status": case.status.value,
-            "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value),
+            "risk_level": case.risk_level.value if case.risk_level else "low",
+            "risk_score": case.risk_score or 0,
+            "is_high_risk": case.is_high_risk or False,
+            "status": case.status.value if case.status else "unknown",
+            "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value if case.status else "unknown"),
             "progress_percent": progress["progress_percent"],
             "current_step": progress["current_step"],
             "total_steps": progress["total_steps"],
@@ -202,11 +202,11 @@ def get_cases_by_status(
             "case_no": case.case_no,
             "claimant_name": case.claimant_name,
             "claim_amount": case.claim_amount,
-            "risk_level": case.risk_level.value,
-            "risk_score": case.risk_score,
-            "is_high_risk": case.is_high_risk,
-            "status": case.status.value,
-            "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value),
+            "risk_level": case.risk_level.value if case.risk_level else "low",
+            "risk_score": case.risk_score or 0,
+            "is_high_risk": case.is_high_risk or False,
+            "status": case.status.value if case.status else "unknown",
+            "status_description": STATUS_DESCRIPTIONS.get(case.status, case.status.value if case.status else "unknown"),
             "progress_percent": progress["progress_percent"],
             "current_step": progress["current_step"],
             "total_steps": progress["total_steps"],
@@ -217,7 +217,10 @@ def get_cases_by_status(
 
 
 def get_case_progress_obj(case: ClaimCase) -> dict:
-    current_step = STATUS_ORDER.index(case.status) + 1
+    if not case.status or case.status not in STATUS_ORDER:
+        current_step = 0
+    else:
+        current_step = STATUS_ORDER.index(case.status) + 1
     processing_steps = 10
     processing_current = min(current_step, processing_steps)
     progress_percent = (processing_current / processing_steps) * 100

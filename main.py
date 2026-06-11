@@ -17,14 +17,16 @@ from routers import (
     risk_analysis,
     manual_review,
     progress_query,
-    result_callback
+    result_callback,
+    batch_processing
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    print("数据库初始化完成")
+    from migrations import run_migrations
+    run_migrations()
+    print("数据库迁移完成")
     
     from init_data import init_database
     init_database()
@@ -60,6 +62,7 @@ app.include_router(risk_analysis.router)
 app.include_router(manual_review.router)
 app.include_router(progress_query.router)
 app.include_router(result_callback.router)
+app.include_router(batch_processing.router)
 
 
 @app.get("/", tags=["系统"])
@@ -77,7 +80,8 @@ async def root():
             "risk_analysis": "/api/risk",
             "manual_review": "/api/review",
             "progress_query": "/api/progress",
-            "result_callback": "/api/result"
+            "result_callback": "/api/result",
+            "batch_processing": "/api/batch"
         }
     }
 

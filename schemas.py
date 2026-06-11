@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
-from models import ClaimStatus, DocumentType, RiskLevel, ReviewResult
+from models import ClaimStatus, DocumentType, RiskLevel, ReviewResult, RuleManualStatus, BatchTaskStatus, BatchTaskType
 
 
 class CaseBase(BaseModel):
@@ -127,6 +127,10 @@ class RuleCheckBase(BaseModel):
 class RuleCheckResponse(RuleCheckBase):
     id: int
     case_id: int
+    manual_status: RuleManualStatus = RuleManualStatus.UNCONFIRMED
+    manual_note: Optional[str] = None
+    manual_confirmed_by: Optional[str] = None
+    manual_confirmed_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -326,3 +330,63 @@ class PaginatedResponse(BaseModel):
 
 
 CaseDetailResponse.model_rebuild()
+
+
+class RuleManualConfirmRequest(BaseModel):
+    rule_check_id: int
+    manual_status: RuleManualStatus
+    manual_note: Optional[str] = None
+    confirmed_by: Optional[str] = None
+
+
+class SummaryVersionResponse(BaseModel):
+    id: int
+    case_id: int
+    version: int
+    format: str
+    file_name: Optional[str] = None
+    file_path: Optional[str] = None
+    generated_by: str
+    generated_at: datetime
+    is_latest: bool
+    summary_snapshot: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SummaryExportRequest(BaseModel):
+    case_id: int
+    format: str = "json"
+    generated_by: Optional[str] = "system"
+
+
+class BatchProcessRequest(BaseModel):
+    task_type: BatchTaskType = BatchTaskType.FULL_PIPELINE
+    status_filter: Optional[ClaimStatus] = None
+    case_ids: Optional[List[int]] = None
+    triggered_by: Optional[str] = "system"
+
+
+class BatchCaseResult(BaseModel):
+    case_id: int
+    case_no: str
+    success: bool
+    message: str
+    stage: Optional[str] = None
+
+
+class BatchTaskResponse(BaseModel):
+    task_id: int
+    task_no: str
+    task_type: BatchTaskType
+    status: BatchTaskStatus
+    total_count: int
+    success_count: int
+    failed_count: int
+    results: List[BatchCaseResult] = []
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

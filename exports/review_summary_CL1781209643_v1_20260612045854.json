@@ -1,0 +1,74 @@
+{
+  "basic_info": {
+    "case_no": "CL1781209643",
+    "policy_no": "POLTEST001",
+    "claimant_name": "测试用户",
+    "claimant_id_card": "110101199001011234",
+    "insured_name": "测试用户",
+    "insured_id_card": "110101199001011234",
+    "claim_amount": 15000.0,
+    "accident_date": "2024-06-01 00:00:00",
+    "claim_date": "2026-06-11 20:27:25.152477",
+    "created_at": "2026-06-11 20:27:25.152477",
+    "updated_at": "2026-06-11 20:58:45.785738"
+  },
+  "processing_overview": {
+    "current_status": "extraction_processing",
+    "current_status_desc": "信息抽取中",
+    "risk_level": "low",
+    "risk_score": 0.0,
+    "is_high_risk": false,
+    "total_documents": 0,
+    "total_ocr_results": 0,
+    "total_invoice_amount": 0
+  },
+  "documents": [],
+  "ocr_recognition": [],
+  "extracted_data": [],
+  "rule_checks": {
+    "summary": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "pass_rate": 0,
+      "confirmed_count": 0,
+      "unconfirmed_count": 0
+    },
+    "details": []
+  },
+  "risk_analysis": {
+    "summary": {
+      "overall_risk_level": "low",
+      "overall_risk_score": 0.0,
+      "is_high_risk": false,
+      "critical_alerts": 0,
+      "high_alerts": 0,
+      "medium_alerts": 0
+    },
+    "alerts": []
+  },
+  "manual_review": {
+    "reviewer": null,
+    "reviewer_id": null,
+    "review_result": null,
+    "review_opinion": null,
+    "review_date": null,
+    "final_approved_amount": null,
+    "records": []
+  },
+  "supplements": {
+    "total": 0,
+    "completed": 0,
+    "pending": 0,
+    "items": []
+  },
+  "conclusion": {
+    "conclusion": "AI初审未发现明显风险，规则校验通过率较高，建议自动通过。",
+    "risk_assessment": "未发现明显风险",
+    "rule_pass_rate": 100,
+    "recommendation": "建议自动通过",
+    "approved_amount": null,
+    "claim_amount": 15000.0,
+    "amount_difference": null
+  }
+}

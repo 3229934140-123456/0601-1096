@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import json
 import uuid
@@ -9,8 +9,8 @@ import os
 import httpx
 
 from database import get_db
-from models import ClaimCase, ClaimStatus, ReviewResult, CallLog
-from schemas import ExportRequest, ExportResponse, ResultCallbackRequest
+from models import ClaimCase, ClaimStatus, ReviewResult, CallLog, SummaryVersion
+from schemas import ExportRequest, ExportResponse, ResultCallbackRequest, SummaryVersionResponse, SummaryExportRequest
 from config import settings
 
 router = APIRouter(prefix="/api/result", tags=["结果回传"])
@@ -27,27 +27,154 @@ async def export_review_summary(
         raise HTTPException(status_code=404, detail="案件不存在")
 
     summary = generate_review_summary(case, db)
+    summary_json = json.loads(json.dumps(summary, default=str))
 
-    if request.format == "pdf":
-        file_name = f"review_summary_{case.case_no}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+    latest_version = db.query(SummaryVersion).filter(
+        SummaryVersion.case_id == case.id
+    ).order_by(SummaryVersion.version.desc()).first()
+    next_version = (latest_version.version + 1) if latest_version else 1
+
+    db.query(SummaryVersion).filter(
+        SummaryVersion.case_id == case.id
+    ).update({SummaryVersion.is_latest: False})
+    db.commit()
+
+    fmt = request.format.lower()
+    if fmt == "pdf":
+        file_name = f"review_summary_{case.case_no}_v{next_version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
         file_path = settings.EXPORT_DIR / file_name
         background_tasks.add_task(generate_pdf_report, file_path, summary)
-    elif request.format == "excel":
-        file_name = f"review_summary_{case.case_no}_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+    elif fmt == "excel":
+        file_name = f"review_summary_{case.case_no}_v{next_version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
         file_path = settings.EXPORT_DIR / file_name
         background_tasks.add_task(generate_excel_report, file_path, summary)
     else:
-        file_name = f"review_summary_{case.case_no}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
+        file_name = f"review_summary_{case.case_no}_v{next_version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
         file_path = settings.EXPORT_DIR / file_name
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2, default=str)
+            json.dump(summary_json, f, ensure_ascii=False, indent=2)
+
+    version_record = SummaryVersion(
+        case_id=case.id,
+        version=next_version,
+        format=fmt,
+        file_name=file_name,
+        file_path=str(file_path),
+        generated_by="system",
+        summary_snapshot=summary_json,
+        is_latest=True
+    )
+    db.add(version_record)
+    db.commit()
+    db.refresh(version_record)
 
     return ExportResponse(
         success=True,
-        message="审查摘要生成中，将在后台完成",
+        message=f"审查摘要 v{next_version} 生成中",
         file_url=f"/api/result/download/{file_name}",
         file_name=file_name,
         summary=summary
+    )
+
+
+@router.post("/export-versioned", response_model=ExportResponse)
+async def export_review_summary_versioned(
+    request: SummaryExportRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    case = db.query(ClaimCase).filter(ClaimCase.id == request.case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    summary = generate_review_summary(case, db)
+    summary_json = json.loads(json.dumps(summary, default=str))
+
+    latest_version = db.query(SummaryVersion).filter(
+        SummaryVersion.case_id == case.id
+    ).order_by(SummaryVersion.version.desc()).first()
+    next_version = (latest_version.version + 1) if latest_version else 1
+
+    db.query(SummaryVersion).filter(
+        SummaryVersion.case_id == case.id
+    ).update({SummaryVersion.is_latest: False})
+    db.commit()
+
+    fmt = request.format.lower()
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    file_name = f"review_summary_{case.case_no}_v{next_version}_{timestamp}.{fmt if fmt != 'excel' else 'xlsx'}"
+    file_path = settings.EXPORT_DIR / file_name
+
+    if fmt == "pdf":
+        background_tasks.add_task(generate_pdf_report, file_path, summary)
+    elif fmt == "excel":
+        background_tasks.add_task(generate_excel_report, file_path, summary)
+    else:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(summary_json, f, ensure_ascii=False, indent=2)
+
+    version_record = SummaryVersion(
+        case_id=case.id,
+        version=next_version,
+        format=fmt,
+        file_name=file_name,
+        file_path=str(file_path),
+        generated_by=request.generated_by or "system",
+        summary_snapshot=summary_json,
+        is_latest=True
+    )
+    db.add(version_record)
+    db.commit()
+    db.refresh(version_record)
+
+    return ExportResponse(
+        success=True,
+        message=f"审查摘要 v{next_version} 生成中，触发人: {request.generated_by or 'system'}",
+        file_url=f"/api/result/download/{file_name}",
+        file_name=file_name,
+        summary=summary
+    )
+
+
+@router.get("/{case_id}/versions", response_model=List[SummaryVersionResponse])
+def list_summary_versions(case_id: int, db: Session = Depends(get_db)):
+    case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    versions = db.query(SummaryVersion).filter(
+        SummaryVersion.case_id == case_id
+    ).order_by(SummaryVersion.version.desc()).all()
+
+    return versions
+
+
+@router.get("/version/{version_id}", response_model=SummaryVersionResponse)
+def get_summary_version(version_id: int, include_snapshot: bool = True, db: Session = Depends(get_db)):
+    version = db.query(SummaryVersion).filter(SummaryVersion.id == version_id).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    if not include_snapshot:
+        version.summary_snapshot = None
+
+    return version
+
+
+@router.get("/download-version/{version_id}")
+async def download_summary_version(version_id: int, db: Session = Depends(get_db)):
+    version = db.query(SummaryVersion).filter(SummaryVersion.id == version_id).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="版本不存在")
+
+    file_path = settings.EXPORT_DIR / version.file_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"版本文件不存在: {version.file_name}")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=version.file_name,
+        media_type="application/octet-stream"
     )
 
 
@@ -88,7 +215,7 @@ async def send_result_callback(
     callback_data = {
         "case_id": case.id,
         "case_no": case.case_no,
-        "status": case.status.value,
+        "status": case.status.value if case.status else "unknown",
         "result": case.review_result.value if case.review_result else None,
         "summary": summary,
         "custom_data": request.callback_data
@@ -121,7 +248,7 @@ def complete_case(case_id: int, db: Session = Depends(get_db)):
         "success": True,
         "message": "案件已标记完成",
         "case_no": case.case_no,
-        "final_status": case.status.value,
+        "final_status": case.status.value if case.status else "unknown",
         "final_result": case.review_result.value if case.review_result else None,
         "approved_amount": case.final_approved_amount
     }
@@ -144,9 +271,9 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
     rule_passed = sum(1 for r in rule_checks if r.passed)
     rule_total = len(rule_checks)
 
-    critical_alerts = [a for a in risk_alerts if a.risk_level.value == "critical"]
-    high_alerts = [a for a in risk_alerts if a.risk_level.value == "high"]
-    medium_alerts = [a for a in risk_alerts if a.risk_level.value == "medium"]
+    critical_alerts = [a for a in risk_alerts if a.risk_level and a.risk_level.value == "critical"]
+    high_alerts = [a for a in risk_alerts if a.risk_level and a.risk_level.value == "high"]
+    medium_alerts = [a for a in risk_alerts if a.risk_level and a.risk_level.value == "medium"]
 
     summary = {
         "basic_info": {
@@ -163,11 +290,11 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
             "updated_at": case.updated_at
         },
         "processing_overview": {
-            "current_status": case.status.value,
-            "current_status_desc": get_status_description(case.status),
-            "risk_level": case.risk_level.value,
-            "risk_score": case.risk_score,
-            "is_high_risk": case.is_high_risk,
+            "current_status": case.status.value if case.status else "unknown",
+            "current_status_desc": get_status_description(case.status) if case.status else "未知",
+            "risk_level": case.risk_level.value if case.risk_level else "low",
+            "risk_score": case.risk_score or 0,
+            "is_high_risk": case.is_high_risk or False,
             "total_documents": len(documents),
             "total_ocr_results": len(ocr_results),
             "total_invoice_amount": total_invoice_amount
@@ -215,7 +342,9 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
                 "total": rule_total,
                 "passed": rule_passed,
                 "failed": rule_total - rule_passed,
-                "pass_rate": round(rule_passed / rule_total * 100, 2) if rule_total > 0 else 0
+                "pass_rate": round(rule_passed / rule_total * 100, 2) if rule_total > 0 else 0,
+                "confirmed_count": sum(1 for r in rule_checks if r.manual_status and r.manual_status.value != "unconfirmed"),
+                "unconfirmed_count": sum(1 for r in rule_checks if not r.manual_status or r.manual_status.value == "unconfirmed")
             },
             "details": [
                 {
@@ -227,16 +356,20 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
                     "actual_value": rc.actual_value,
                     "expected_value": rc.expected_value,
                     "description": rc.description,
-                    "suggestion": rc.suggestion
+                    "suggestion": rc.suggestion,
+                    "manual_status": rc.manual_status.value if rc.manual_status else "unconfirmed",
+                    "manual_note": rc.manual_note,
+                    "manual_confirmed_by": rc.manual_confirmed_by,
+                    "manual_confirmed_at": rc.manual_confirmed_at
                 }
                 for rc in rule_checks
             ]
         },
         "risk_analysis": {
             "summary": {
-                "overall_risk_level": case.risk_level.value,
-                "overall_risk_score": case.risk_score,
-                "is_high_risk": case.is_high_risk,
+                "overall_risk_level": case.risk_level.value if case.risk_level else "low",
+                "overall_risk_score": case.risk_score or 0,
+                "is_high_risk": case.is_high_risk or False,
                 "critical_alerts": len(critical_alerts),
                 "high_alerts": len(high_alerts),
                 "medium_alerts": len(medium_alerts)
@@ -248,7 +381,7 @@ def generate_review_summary(case: ClaimCase, db: Session) -> Dict[str, Any]:
                     "alert_type": alert.alert_type,
                     "title": alert.title,
                     "description": alert.description,
-                    "risk_level": alert.risk_level.value,
+                    "risk_level": alert.risk_level.value if alert.risk_level else "low",
                     "risk_score_contribution": alert.risk_score_contribution,
                     "explanation": alert.explanation,
                     "recommendation": alert.recommendation,
@@ -325,19 +458,19 @@ def get_status_description(status: ClaimStatus) -> str:
 
 
 def generate_conclusion(case: ClaimCase, rule_passed: int, rule_total: int, risk_alerts) -> Dict[str, Any]:
-    has_critical = any(a.risk_level.value == "critical" for a in risk_alerts)
-    has_high = any(a.risk_level.value == "high" for a in risk_alerts)
+    has_critical = any(a.risk_level and a.risk_level.value == "critical" for a in risk_alerts)
+    has_high = any(a.risk_level and a.risk_level.value == "high" for a in risk_alerts)
     rule_pass_rate = rule_passed / rule_total * 100 if rule_total > 0 else 100
 
     if case.review_result == ReviewResult.APPROVED:
         recommendation = "建议予以赔付"
-        conclusion_text = f"经AI初审及人工复核，该案审核通过。"
+        conclusion_text = "经AI初审及人工复核，该案审核通过。"
     elif case.review_result == ReviewResult.REJECTED:
         recommendation = "建议拒绝赔付"
-        conclusion_text = f"经AI初审及人工复核，该案审核拒绝。"
+        conclusion_text = "经AI初审及人工复核，该案审核拒绝。"
     elif case.review_result == ReviewResult.NEED_SUPPLEMENT:
         recommendation = "需要补充材料后再审"
-        conclusion_text = f"该案需要补充相关材料后重新审核。"
+        conclusion_text = "该案需要补充相关材料后重新审核。"
     else:
         if has_critical:
             recommendation = "建议人工重点复核"
@@ -350,7 +483,8 @@ def generate_conclusion(case: ClaimCase, rule_passed: int, rule_total: int, risk
             conclusion_text = "AI初审未发现明显风险，规则校验通过率较高，建议自动通过。"
 
     if has_critical or has_high:
-        risk_assessment = f"存在{len([a for a in risk_alerts if a.risk_level.value in ['critical', 'high']])}项高风险预警"
+        high_risk_count = sum(1 for a in risk_alerts if a.risk_level and a.risk_level.value in ["critical", "high"])
+        risk_assessment = f"存在{high_risk_count}项高风险预警"
     else:
         risk_assessment = "未发现明显风险"
 

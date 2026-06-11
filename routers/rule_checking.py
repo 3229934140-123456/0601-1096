@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import hashlib
 
 from database import get_db
-from models import ClaimCase, OCRResult, RuleCheckResult, ClaimStatus, Document, SupplementItem
-from schemas import RuleCheckRequest, RuleCheckResponse, RuleCheckSummaryResponse, SupplementItemResponse
+from models import ClaimCase, OCRResult, RuleCheckResult, ClaimStatus, Document, SupplementItem, RuleManualStatus
+from schemas import RuleCheckRequest, RuleCheckResponse, RuleCheckSummaryResponse, SupplementItemResponse, RuleManualConfirmRequest
 from mock_ai_service import MockRuleEngine
 from config import settings
 
@@ -251,3 +251,102 @@ def get_supplement_items(case_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="案件不存在")
 
     return case.supplement_items
+
+
+@router.post("/confirm", response_model=RuleCheckResponse)
+def confirm_rule_check(request: RuleManualConfirmRequest, db: Session = Depends(get_db)):
+    rule = db.query(RuleCheckResult).filter(RuleCheckResult.id == request.rule_check_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="规则核对记录不存在")
+
+    rule.manual_status = request.manual_status
+    rule.manual_note = request.manual_note
+    rule.manual_confirmed_by = request.confirmed_by
+    rule.manual_confirmed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(rule)
+
+    if request.manual_status == RuleManualStatus.NEED_SUPPLEMENT:
+        existing = db.query(SupplementItem).filter(
+            SupplementItem.case_id == rule.case_id,
+            SupplementItem.item_code == f"SUP_MANUAL_{rule.rule_code}",
+            SupplementItem.is_completed == False
+        ).first()
+        if not existing:
+            item = SupplementItem(
+                case_id=rule.case_id,
+                item_code=f"SUP_MANUAL_{rule.rule_code}",
+                item_name=f"人工补件: {rule.rule_name}",
+                description=request.manual_note or f"规则 [{rule.rule_code}] 人工确认需要补件",
+                reason=f"人工确认: {rule.description or rule.rule_name}",
+                priority=1
+            )
+            db.add(item)
+            db.commit()
+
+    return rule
+
+
+@router.post("/case/{case_id}/confirm-batch")
+def confirm_rules_batch(
+    case_id: int,
+    confirmations: List[RuleManualConfirmRequest],
+    db: Session = Depends(get_db)
+):
+    case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    results = []
+    for conf in confirmations:
+        rule = db.query(RuleCheckResult).filter(
+            RuleCheckResult.id == conf.rule_check_id,
+            RuleCheckResult.case_id == case_id
+        ).first()
+        if rule:
+            rule.manual_status = conf.manual_status
+            rule.manual_note = conf.manual_note
+            rule.manual_confirmed_by = conf.confirmed_by
+            rule.manual_confirmed_at = datetime.utcnow()
+            results.append({"rule_check_id": conf.rule_check_id, "success": True})
+
+            if conf.manual_status == RuleManualStatus.NEED_SUPPLEMENT:
+                existing = db.query(SupplementItem).filter(
+                    SupplementItem.case_id == case_id,
+                    SupplementItem.item_code == f"SUP_MANUAL_{rule.rule_code}",
+                    SupplementItem.is_completed == False
+                ).first()
+                if not existing:
+                    item = SupplementItem(
+                        case_id=case_id,
+                        item_code=f"SUP_MANUAL_{rule.rule_code}",
+                        item_name=f"人工补件: {rule.rule_name}",
+                        description=conf.manual_note or f"规则 [{rule.rule_code}] 人工确认需要补件",
+                        reason=f"人工确认: {rule.description or rule.rule_name}",
+                        priority=1
+                    )
+                    db.add(item)
+        else:
+            results.append({"rule_check_id": conf.rule_check_id, "success": False, "message": "规则记录不存在"})
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"批量确认完成，成功 {sum(1 for r in results if r['success'])} / {len(results)} 条",
+        "results": results
+    }
+
+
+@router.get("/case/{case_id}/failed-rules", response_model=List[RuleCheckResponse])
+def get_failed_rules(case_id: int, db: Session = Depends(get_db)):
+    case = db.query(ClaimCase).filter(ClaimCase.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    failed_rules = db.query(RuleCheckResult).filter(
+        RuleCheckResult.case_id == case_id,
+        RuleCheckResult.passed == False
+    ).order_by(RuleCheckResult.severity.desc(), RuleCheckResult.id.asc()).all()
+
+    return failed_rules
