@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from database import get_db
 from models import ClaimCase, RuleCheckResult, OCRResult, RiskAlert, ClaimStatus, RiskLevel, RuleManualStatus
-from schemas import RiskAnalysisRequest, RiskAnalysisResponse, RiskAlertResponse
+from schemas import RiskAnalysisRequest, RiskAnalysisResponse, RiskAlertResponse, RuleStatsSummary
 from mock_ai_service import MockRiskAnalyzer
 
 router = APIRouter(prefix="/api/risk", tags=["风险提示"])
@@ -113,21 +113,71 @@ async def analyze_risk(request: RiskAnalysisRequest, db: Session = Depends(get_d
         case.risk_level = RiskLevel(risk_result["overall_risk_level"])
         case.risk_score = risk_result["overall_risk_score"]
         case.is_high_risk = risk_result["is_high_risk"]
-        case.status = ClaimStatus.RISK_ANALYZED
-
-        if confirmed_false_positive_count > 0 and case.risk_score > 0:
-            case.risk_score = max(0, case.risk_score - (confirmed_false_positive_count * 5))
-            if case.risk_score < 30:
-                case.risk_level = RiskLevel.LOW
-                case.is_high_risk = False
 
         if case.is_high_risk or effective_failed_count > 0:
             case.status = ClaimStatus.PENDING_REVIEW
+        else:
+            case.status = ClaimStatus.RISK_ANALYZED
 
         db.commit()
 
         for alert in saved_alerts:
             db.refresh(alert)
+
+        rule_total = len(rule_results)
+        rule_passed = sum(1 for r in rule_results if r.passed)
+        rule_failed = rule_total - rule_passed
+        false_positive_count = sum(1 for r in rule_results if r.manual_status and r.manual_status.value == "false_positive")
+        confirmed_count = sum(1 for r in rule_results if r.manual_status and r.manual_status.value == "confirmed")
+        need_supplement_count = sum(1 for r in rule_results if r.manual_status and r.manual_status.value == "need_supplement")
+        unconfirmed_count = sum(1 for r in rule_results if not r.manual_status or r.manual_status.value == "unconfirmed")
+        pass_rate = round(rule_passed / rule_total * 100, 2) if rule_total > 0 else 0
+
+        has_critical = any(a.risk_level and a.risk_level.value == "critical" for a in saved_alerts)
+        has_high = any(a.risk_level and a.risk_level.value == "high" for a in saved_alerts)
+        manual_processed = false_positive_count > 0 or confirmed_count > 0 or need_supplement_count > 0
+
+        if case.review_result and case.review_result.value == "approved":
+            recommendation = "建议予以赔付"
+            conclusion_text = "经AI初审及人工复核，该案审核通过。"
+        elif case.review_result and case.review_result.value == "rejected":
+            recommendation = "建议拒绝赔付"
+            conclusion_text = "经AI初审及人工复核，该案审核拒绝。"
+        elif case.review_result and case.review_result.value == "need_supplement":
+            recommendation = "需要补充材料后再审"
+            conclusion_text = "该案需要补充相关材料后重新审核。"
+        else:
+            if has_critical:
+                recommendation = "建议人工重点复核"
+                conclusion_text = "检测到严重风险项，建议由资深理赔人员进行人工复核。"
+            elif has_high or effective_failed_count > 0 or pass_rate < 80:
+                recommendation = "建议人工复核"
+                conclusion_text = "存在较高风险或规则校验未通过，建议进行人工复核。"
+            else:
+                recommendation = "建议自动通过"
+                conclusion_text = "AI初审未发现明显风险，规则校验通过率较高，建议自动通过。"
+
+        manual_details = []
+        if false_positive_count > 0:
+            manual_details.append(f"已人工确认{false_positive_count}项误报规则")
+        if need_supplement_count > 0:
+            manual_details.append(f"{need_supplement_count}项规则已标记需补件")
+        if confirmed_count > 0:
+            manual_details.append(f"{confirmed_count}项规则已人工确认")
+        if manual_details:
+            conclusion_text += "（" + "，".join(manual_details) + "）"
+
+        rule_stats = RuleStatsSummary(
+            total=rule_total,
+            passed=rule_passed,
+            failed=rule_failed,
+            effective_failed=effective_failed_count,
+            false_positive_count=false_positive_count,
+            confirmed_count=confirmed_count,
+            need_supplement_count=need_supplement_count,
+            unconfirmed_count=unconfirmed_count,
+            pass_rate=pass_rate
+        )
 
         return RiskAnalysisResponse(
             success=True,
@@ -135,7 +185,11 @@ async def analyze_risk(request: RiskAnalysisRequest, db: Session = Depends(get_d
             risk_alerts=saved_alerts,
             overall_risk_level=case.risk_level,
             overall_risk_score=case.risk_score,
-            is_high_risk=case.is_high_risk
+            is_high_risk=case.is_high_risk,
+            rule_stats=rule_stats,
+            recommendation=recommendation,
+            conclusion=conclusion_text,
+            manual_processed=manual_processed
         )
 
     except Exception as e:

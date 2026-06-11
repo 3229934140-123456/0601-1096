@@ -28,8 +28,10 @@ async def batch_process(
     db: Session = Depends(get_db)
 ):
     query = db.query(ClaimCase)
+    target_case_ids = []
 
     if request.case_ids and len(request.case_ids) > 0:
+        target_case_ids = list(request.case_ids)
         query = query.filter(ClaimCase.id.in_(request.case_ids))
     elif request.status_filter is not None:
         query = query.filter(ClaimCase.status == request.status_filter)
@@ -41,8 +43,16 @@ async def batch_process(
         ]))
 
     cases = query.order_by(ClaimCase.created_at.asc()).all()
-    if not cases:
-        raise HTTPException(status_code=400, detail="没有符合条件的案件")
+
+    if request.case_ids and len(request.case_ids) > 0:
+        total = len(request.case_ids)
+        if total == 0:
+            raise HTTPException(status_code=400, detail="没有指定要处理的案件")
+    else:
+        if not cases:
+            raise HTTPException(status_code=400, detail="没有符合条件的案件")
+        total = len(cases)
+        target_case_ids = [c.id for c in cases]
 
     task = BatchTask(
         task_no=generate_task_no(),
@@ -50,8 +60,8 @@ async def batch_process(
         status=BatchTaskStatus.PENDING,
         triggered_by=request.triggered_by,
         filter_status=request.status_filter.value if request.status_filter else None,
-        case_ids=[c.id for c in cases],
-        total_count=len(cases)
+        case_ids=target_case_ids,
+        total_count=total
     )
     db.add(task)
     db.commit()
@@ -61,7 +71,7 @@ async def batch_process(
         run_batch_task,
         task.id,
         request.task_type,
-        [c.id for c in cases],
+        target_case_ids,
         db.bind.url
     )
 
@@ -437,6 +447,8 @@ def run_risk_analysis_for_case(db: Session, case: ClaimCase):
 
     rule_data_list = []
     for rc in rule_checks:
+        manual_status = rc.manual_status.value if rc.manual_status else "unconfirmed"
+        is_effectively_failed = (not rc.passed) and manual_status not in ["false_positive"]
         rule_data_list.append({
             "rule_code": rc.rule_code,
             "rule_name": rc.rule_name,
@@ -446,8 +458,9 @@ def run_risk_analysis_for_case(db: Session, case: ClaimCase):
             "expected_value": rc.expected_value,
             "description": rc.description,
             "suggestion": rc.suggestion,
-            "manual_status": rc.manual_status.value if rc.manual_status else "unconfirmed",
-            "manual_note": rc.manual_note
+            "manual_status": manual_status,
+            "manual_note": rc.manual_note,
+            "effectively_failed": is_effectively_failed
         })
 
     ocr_data_list = []
@@ -500,20 +513,9 @@ def run_risk_analysis_for_case(db: Session, case: ClaimCase):
         )
         db.add(risk_alert)
 
-    confirmed_false_positive_count = sum(
-        1 for rc in rule_checks
-        if not rc.passed and rc.manual_status and rc.manual_status.value == "false_positive"
-    )
-
     case.risk_level = RiskLevel(analysis_result["overall_risk_level"])
     case.risk_score = analysis_result["overall_risk_score"]
     case.is_high_risk = analysis_result["is_high_risk"]
-
-    if confirmed_false_positive_count > 0 and case.risk_score > 0:
-        case.risk_score = max(0, case.risk_score - (confirmed_false_positive_count * 5))
-        if case.risk_score < 30:
-            case.risk_level = RiskLevel.LOW
-            case.is_high_risk = False
 
     effective_failed_count = sum(
         1 for rc in rule_checks

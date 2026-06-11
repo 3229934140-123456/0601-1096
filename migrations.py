@@ -1,16 +1,21 @@
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, Column, Integer, String, Float, DateTime, Text, Boolean, JSON
 from database import engine, Base, SessionLocal
 from models import (
     ClaimCase, Document, OCRResult, ExtractedData, RuleCheckResult,
     RiskAlert, Reviewer, ReviewRecord, SupplementItem, CallLog,
-    SummaryVersion, BatchTask, ClaimStatus, DocumentType, RiskLevel,
-    ReviewResult, RuleManualStatus, BatchTaskStatus, BatchTaskType
+    SummaryVersion, BatchTask
 )
 from datetime import datetime
 import os
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
+
+TABLE_MODELS = [
+    ClaimCase, Document, OCRResult, ExtractedData, RuleCheckResult,
+    RiskAlert, Reviewer, ReviewRecord, SupplementItem, CallLog,
+    SummaryVersion, BatchTask
+]
 
 
 def get_current_version(db) -> int:
@@ -52,6 +57,81 @@ def column_exists(table_name: str, column_name: str) -> bool:
 def table_exists(table_name: str) -> bool:
     inspector = inspect(engine)
     return table_name in inspector.get_table_names()
+
+
+def get_column_type_sql(column) -> str:
+    col_type = type(column.type).__name__
+    type_map = {
+        "Integer": "INTEGER",
+        "SmallInteger": "INTEGER",
+        "BigInteger": "INTEGER",
+        "String": "VARCHAR",
+        "Text": "TEXT",
+        "Float": "REAL",
+        "DateTime": "DATETIME",
+        "Date": "DATE",
+        "Boolean": "BOOLEAN",
+        "JSON": "JSON",
+        "Enum": "VARCHAR",
+    }
+    sql_type = type_map.get(col_type, "TEXT")
+    if hasattr(column.type, "length") and column.type.length:
+        sql_type = f"VARCHAR({column.type.length})"
+    return sql_type
+
+
+def get_column_default_sql(column) -> str:
+    if column.default is None:
+        return None
+    arg = column.default.arg
+    if callable(arg):
+        return None
+    if isinstance(arg, bool):
+        return "1" if arg else "0"
+    if isinstance(arg, (int, float)):
+        return str(arg)
+    if isinstance(arg, str):
+        return f"'{arg}'"
+    if isinstance(arg, dict):
+        return "'{}'"
+    if isinstance(arg, list):
+        return "'[]'"
+    return None
+
+
+def sync_table_columns(db, model_class):
+    table_name = model_class.__tablename__
+    if not table_exists(table_name):
+        return []
+
+    inspector = inspect(engine)
+    existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+
+    added = []
+    for col in model_class.__table__.columns:
+        if col.name in existing_cols:
+            continue
+        if col.primary_key:
+            continue
+
+        col_type = get_column_type_sql(col)
+        default_sql = get_column_default_sql(col)
+        nullable = "" if col.nullable else " NOT NULL"
+
+        ddl = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"
+        if default_sql is not None:
+            ddl += f" DEFAULT {default_sql}"
+        ddl += nullable
+
+        try:
+            db.execute(text(ddl))
+            db.commit()
+            added.append(col.name)
+        except Exception as e:
+            db.rollback()
+            print(f"  [WARN] 添加字段 {table_name}.{col.name} 失败: {e}")
+
+    return added
 
 
 def migrate_v1_to_v2(db):
@@ -109,6 +189,22 @@ def migrate_v2_to_v3(db):
     db.commit()
 
 
+def migrate_v3_to_v4(db):
+    print("[DB Migration] 执行通用字段对齐，检查所有表...")
+    total_added = 0
+    for model in TABLE_MODELS:
+        table_name = model.__tablename__
+        if not table_exists(table_name):
+            continue
+        added = sync_table_columns(db, model)
+        if added:
+            print(f"  {table_name}: 新增 {len(added)} 个字段 -> {', '.join(added)}")
+            total_added += len(added)
+    if total_added == 0:
+        print("  所有表字段已对齐，无需新增")
+    db.commit()
+
+
 def run_migrations():
     db = SessionLocal()
     try:
@@ -133,6 +229,12 @@ def run_migrations():
             set_version(db, 3, "新增审查摘要版本表和批量任务表")
             current = 3
             print("[DB Migration] 已升级到 v3: summary_versions 和 batch_tasks")
+
+        if current < 4:
+            migrate_v3_to_v4(db)
+            set_version(db, 4, "通用字段对齐: 所有表缺失字段自动补齐")
+            current = 4
+            print("[DB Migration] 已升级到 v4: 全表字段自动对齐")
 
         if current == SCHEMA_VERSION:
             print(f"[DB Migration] Schema 已是最新版本 v{SCHEMA_VERSION}")

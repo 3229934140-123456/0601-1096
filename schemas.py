@@ -263,6 +263,18 @@ class RiskAnalysisRequest(BaseModel):
     case_id: int
 
 
+class RuleStatsSummary(BaseModel):
+    total: int = 0
+    passed: int = 0
+    failed: int = 0
+    effective_failed: int = 0
+    false_positive_count: int = 0
+    confirmed_count: int = 0
+    need_supplement_count: int = 0
+    unconfirmed_count: int = 0
+    pass_rate: float = 0.0
+
+
 class RiskAnalysisResponse(BaseModel):
     success: bool
     message: str
@@ -270,6 +282,10 @@ class RiskAnalysisResponse(BaseModel):
     overall_risk_level: RiskLevel
     overall_risk_score: float
     is_high_risk: bool
+    rule_stats: Optional[RuleStatsSummary] = None
+    recommendation: Optional[str] = None
+    conclusion: Optional[str] = None
+    manual_processed: Optional[bool] = None
 
 
 class AssignReviewerRequest(BaseModel):
